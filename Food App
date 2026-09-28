@@ -1,0 +1,453 @@
+import tkinter as tk
+from tkinter import messagebox
+import random
+from datetime import datetime, timedelta
+
+# ---------- ДАННЫЕ ----------
+DISHES = [
+    {"id": 1, "name": "Маргарита", "cat": "Пицца", "emoji": "🍕", "price": 590, "desc": "Томаты, моцарелла"},
+    {"id": 2, "name": "Пепперони", "cat": "Пицца", "emoji": "🍕", "price": 690, "desc": "Пепперони, сыр"},
+    {"id": 3, "name": "Четыре сыра", "cat": "Пицца", "emoji": "🧀", "price": 750, "desc": "4 вида сыра"},
+    {"id": 4, "name": "Чизбургер", "cat": "Бургеры", "emoji": "🍔", "price": 320, "desc": "Котлета, чеддер"},
+    {"id": 5, "name": "Двойной бургер", "cat": "Бургеры", "emoji": "🍔", "price": 420, "desc": "2 котлеты, бекон"},
+    {"id": 6, "name": "Чикен бургер", "cat": "Бургеры", "emoji": "🍗", "price": 350, "desc": "Курица, соус"},
+    {"id": 7, "name": "Филадельфия", "cat": "Суши", "emoji": "🍣", "price": 480, "desc": "Лосось, сыр"},
+    {"id": 8, "name": "Калифорния", "cat": "Суши", "emoji": "🍱", "price": 430, "desc": "Краб, авокадо"},
+    {"id": 9, "name": "Цезарь", "cat": "Салаты", "emoji": "🥗", "price": 310, "desc": "Курица, пармезан"},
+    {"id": 10, "name": "Греческий", "cat": "Салаты", "emoji": "🥒", "price": 280, "desc": "Фета, оливки"},
+    {"id": 11, "name": "Кола", "cat": "Напитки", "emoji": "🥤", "price": 120, "desc": "0.5 л"},
+    {"id": 12, "name": "Сок", "cat": "Напитки", "emoji": "🧃", "price": 150, "desc": "Апельсиновый"},
+    {"id": 13, "name": "Латте", "cat": "Напитки", "emoji": "☕", "price": 180, "desc": "Кофе с молоком"},
+    {"id": 14, "name": "Тирамису", "cat": "Десерты", "emoji": "🍰", "price": 290, "desc": "Маскарпоне"},
+    {"id": 15, "name": "Чизкейк", "cat": "Десерты", "emoji": "🧁", "price": 270, "desc": "Ягодный соус"},
+    {"id": 16, "name": "Мороженое", "cat": "Десерты", "emoji": "🍨", "price": 190, "desc": "3 вкуса"},
+]
+
+PROMOS = [
+    {"title": "🎉 Скидка 20% на пиццу", "text": "При заказе от 2 пицц — скидка 20%", "code": "PIZZA20", "discount": 0.20},
+    {"title": "🍔 Второй бургер в подарок", "text": "Акция по пятницам", "code": "BURGER2X1", "discount": 0.15},
+    {"title": "🍣 Бесплатная доставка", "text": "От 1000 ₽ бесплатно", "code": "FREEDEL", "discount": 0.10},
+    {"title": "🥤 Напиток в подарок", "text": "При заказе от 800 ₽", "code": "DRINKFREE", "discount": 0.10},
+    {"title": "🍰 Скидка 15% на десерты", "text": "По выходным", "code": "SWEET15", "discount": 0.15},
+]
+
+cart = []
+orders_history = []
+active_promo = None
+
+# ---------- ЦВЕТА ----------
+THEMES = {
+    "dark":  {"bg": "#0f0f1a", "card": "#1a1a2e", "btn": "#1a1a2e",
+              "text": "#ffffff", "sub": "#888888", "accent": "#ff6b35"},
+    "light": {"bg": "#f0f0f5", "card": "#ffffff", "btn": "#ffffff",
+              "text": "#000000", "sub": "#666666", "accent": "#ff6b35"},
+}
+current_theme = "dark"
+
+def c(key):
+    return THEMES[current_theme][key]
+
+
+def emoji_font(size=30):
+    return ("Segoe UI Emoji", size)
+
+
+# ---------- КОРЗИНА ----------
+def add_to_cart(dish_id):
+    dish = next((d for d in DISHES if d["id"] == dish_id), None)
+    if not dish:
+        return
+    item = next((i for i in cart if i["id"] == dish_id), None)
+    if item:
+        item["qty"] += 1
+    else:
+        cart.append({**dish, "qty": 1})
+
+
+def change_qty(dish_id, delta):
+    global cart
+    item = next((i for i in cart if i["id"] == dish_id), None)
+    if not item:
+        return
+    item["qty"] += delta
+    if item["qty"] <= 0:
+        cart = [i for i in cart if i["id"] != dish_id]
+
+
+def get_subtotal():
+    return sum(i["price"] * i["qty"] for i in cart)
+
+
+def get_total():
+    base = get_subtotal()
+    if active_promo:
+        return int(base * (1 - active_promo["discount"]))
+    return base
+
+
+def apply_promo(code):
+    global active_promo
+    code = code.strip().upper()
+    promo = next((p for p in PROMOS if p["code"] == code), None)
+    if promo:
+        active_promo = {"code": promo["code"], "discount": promo["discount"]}
+        return True, f"✅ Скидка {int(promo['discount']*100)}% применена"
+    return False, "❌ Промокод не найден"
+
+
+# ---------- ПРИЛОЖЕНИЕ ----------
+class FoodApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🍔 Food App")
+        self.root.geometry("950x680")
+        self.root.configure(bg=c("bg"))
+
+        self.container = tk.Frame(root, bg=c("bg"))
+        self.container.pack(fill="both", expand=True)
+
+        self.show_menu()
+
+    def clear(self):
+        for w in self.container.winfo_children():
+            w.destroy()
+
+    def top_bar(self):
+        top = tk.Frame(self.container, bg=c("accent"), height=60)
+        top.pack(fill="x")
+
+        tk.Label(top, text="🍔 Food App", font=emoji_font(22),
+                 bg=c("accent"), fg="white").pack(side="left", padx=20, pady=10)
+
+        tk.Button(top, text="🌓 Тема", command=self.toggle_theme,
+                  bg="white", fg=c("accent"), bd=0, padx=10, cursor="hand2").pack(side="right", padx=5)
+        tk.Button(top, text=f"🛒 Корзина ({len(cart)})", command=self.show_cart,
+                  bg="white", fg=c("accent"), bd=0, padx=10, cursor="hand2").pack(side="right", padx=5)
+
+    def show_menu(self):
+        self.clear()
+        self.top_bar()
+
+        cats = ["Все"] + sorted(set(d["cat"] for d in DISHES))
+        cat_frame = tk.Frame(self.container, bg=c("bg"))
+        cat_frame.pack(fill="x", pady=10, padx=10)
+
+        for cat in cats:
+            tk.Button(cat_frame, text=cat, command=lambda c_=cat: self.show_dishes(c_),
+                      bg=c("card"), fg=c("text"), bd=0, padx=12, pady=6,
+                      cursor="hand2").pack(side="left", padx=4)
+
+        tk.Button(cat_frame, text="🔥 Акции", command=self.show_promos,
+                  bg=c("accent"), fg="white", bd=0, padx=15, pady=6,
+                  cursor="hand2", font=("Arial", 11, "bold")).pack(side="left", padx=4)
+
+        self.dishes_frame = tk.Frame(self.container, bg=c("bg"))
+        self.dishes_frame.pack(fill="both", expand=True, padx=15, pady=10)
+
+        self.show_dishes("Все")
+
+    def show_dishes(self, category):
+        for w in self.dishes_frame.winfo_children():
+            w.destroy()
+
+        filtered = DISHES if category == "Все" else [d for d in DISHES if d["cat"] == category]
+
+        row, col = 0, 0
+        for d in filtered:
+            card = tk.Frame(self.dishes_frame, bg=c("card"))
+            card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+            tk.Label(card, text=d["emoji"], font=emoji_font(40),
+                     bg=c("card")).pack(pady=5)
+
+            tk.Label(card, text=d["name"], font=("Arial", 13, "bold"),
+                     bg=c("card"), fg=c("text")).pack()
+            tk.Label(card, text=d["desc"], font=("Arial", 10),
+                     bg=c("card"), fg=c("sub"), wraplength=180).pack()
+            tk.Label(card, text=f"{d['price']} ₽", font=("Arial", 12, "bold"),
+                     bg=c("card"), fg=c("accent")).pack(pady=5)
+
+            tk.Button(card, text="Добавить",
+                      command=lambda id_=d["id"]: self.add_and_refresh(id_),
+                      bg=c("accent"), fg="white", bd=0, padx=15, pady=5,
+                      cursor="hand2").pack(pady=5)
+
+            col += 1
+            if col == 4:
+                col = 0
+                row += 1
+
+        for i in range(4):
+            self.dishes_frame.grid_columnconfigure(i, weight=1)
+
+    def add_and_refresh(self, dish_id):
+        add_to_cart(dish_id)
+        messagebox.showinfo("Добавлено", "Товар добавлен в корзину ✅")
+
+    # ---------- АКЦИИ ----------
+    def show_promos(self):
+        self.clear()
+        self.top_bar()
+
+        tk.Label(self.container, text="🔥 Скидки и акции",
+                 font=("Arial", 22, "bold"), bg=c("bg"), fg=c("text")).pack(pady=20)
+
+        promos_frame = tk.Frame(self.container, bg=c("bg"))
+        promos_frame.pack(fill="both", expand=True, padx=20)
+
+        for p in PROMOS:
+            card = tk.Frame(promos_frame, bg=c("card"))
+            card.pack(fill="x", pady=8)
+
+            tk.Label(card, text=p["title"], font=emoji_font(20),
+                     bg=c("card"), fg=c("accent"), anchor="w").pack(fill="x", padx=15, pady=(10, 0))
+            tk.Label(card, text=p["text"], font=("Arial", 11),
+                     bg=c("card"), fg=c("text"), anchor="w").pack(fill="x", padx=15)
+
+            code_frame = tk.Frame(card, bg=c("card"))
+            code_frame.pack(fill="x", padx=15, pady=10)
+            tk.Label(code_frame, text="Промокод:", font=("Arial", 11),
+                     bg=c("card"), fg=c("sub")).pack(side="left")
+            tk.Label(code_frame, text=p["code"], font=("Consolas", 12, "bold"),
+                     bg=c("card"), fg=c("accent")).pack(side="left", padx=8)
+
+        tk.Button(self.container, text="← Назад", command=self.show_menu,
+                  bg=c("btn"), fg=c("text"), bd=0, padx=20, pady=10,
+                  cursor="hand2").pack(pady=15)
+
+    # ---------- КОРЗИНА ----------
+    def show_cart(self):
+        self.clear()
+        self.top_bar()
+
+        tk.Label(self.container, text="🛒 Корзина", font=emoji_font(24),
+                 bg=c("bg"), fg=c("text")).pack(pady=15)
+
+        list_frame = tk.Frame(self.container, bg=c("bg"))
+        list_frame.pack(fill="both", expand=True, padx=20)
+
+        if not cart:
+            tk.Label(list_frame, text="Корзина пуста",
+                     font=("Arial", 14), bg=c("bg"), fg=c("sub")).pack(pady=30)
+        else:
+            for item in cart:
+                row = tk.Frame(list_frame, bg=c("card"))
+                row.pack(fill="x", pady=5)
+
+                tk.Label(row, text=item["emoji"], font=emoji_font(24),
+                         bg=c("card")).pack(side="left", padx=10)
+                tk.Label(row, text=item["name"], font=("Arial", 12),
+                         bg=c("card"), fg=c("text"), width=20,
+                         anchor="w").pack(side="left")
+
+                tk.Button(row, text="−", command=lambda id_=item["id"]: self.qty_change(id_, -1),
+                          bg=c("btn"), fg=c("text"), bd=0, padx=10, cursor="hand2").pack(side="left")
+                tk.Label(row, text=str(item["qty"]), font=("Arial", 12, "bold"),
+                         bg=c("card"), fg=c("text"), width=3).pack(side="left")
+                tk.Button(row, text="+", command=lambda id_=item["id"]: self.qty_change(id_, 1),
+                          bg=c("btn"), fg=c("text"), bd=0, padx=10, cursor="hand2").pack(side="left")
+
+                tk.Label(row, text=f"{item['price'] * item['qty']} ₽",
+                         font=("Arial", 12, "bold"), bg=c("card"),
+                         fg=c("accent")).pack(side="right", padx=15)
+
+                tk.Button(row, text="❌", command=lambda id_=item["id"]: self.qty_change(id_, -999),
+                          bg=c("card"), fg="red", bd=0, padx=8, cursor="hand2").pack(side="right")
+
+        if active_promo:
+            tk.Label(self.container,
+                     text=f"🎟 Промокод {active_promo['code']}: скидка {int(active_promo['discount']*100)}%",
+                     font=("Arial", 12), bg=c("bg"), fg="green").pack(pady=5)
+
+        tk.Label(self.container, text=f"Итого: {get_total()} ₽",
+                 font=("Arial", 18, "bold"), bg=c("bg"), fg=c("accent")).pack(pady=15)
+
+        tk.Button(self.container, text="Оформить заказ", command=self.place_order,
+                  font=("Arial", 14, "bold"), bg=c("accent"), fg="white",
+                  bd=0, padx=30, pady=10, cursor="hand2").pack(pady=5)
+        tk.Button(self.container, text="← Назад", command=self.show_menu,
+                  bg=c("btn"), fg=c("text"), bd=0, padx=20, pady=8,
+                  cursor="hand2").pack(pady=10)
+
+    def qty_change(self, dish_id, delta):
+        change_qty(dish_id, delta)
+        self.show_cart()
+
+    # ---------- ОФОРМЛЕНИЕ ЗАКАЗА ----------
+    def place_order(self):
+        if not cart:
+            messagebox.showerror("Ошибка", "Корзина пуста")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Оформление заказа")
+        win.geometry("400x620")
+        win.configure(bg=c("bg"))
+
+        tk.Label(win, text="Оформление заказа", font=("Arial", 16, "bold"),
+                 bg=c("bg"), fg=c("text")).pack(pady=15)
+
+        def make_field(label):
+            tk.Label(win, text=label, bg=c("bg"), fg=c("text"),
+                     font=("Arial", 11), anchor="w").pack(fill="x", padx=25, pady=(10, 0))
+            e = tk.Entry(win, font=("Arial", 12))
+            e.pack(padx=25, fill="x", pady=4, ipady=6)
+            return e
+
+        name_e = make_field("Ваше имя")
+        phone_e = make_field("Телефон")
+        addr_e = make_field("Адрес")
+        comm_e = make_field("Комментарий (необязательно)")
+
+        # Промокод
+        tk.Label(win, text="Промокод (если есть)", bg=c("bg"), fg=c("text"),
+                 font=("Arial", 11), anchor="w").pack(fill="x", padx=25, pady=(15, 0))
+
+        promo_frame = tk.Frame(win, bg=c("bg"))
+        promo_frame.pack(padx=25, fill="x", pady=4)
+        promo_e = tk.Entry(promo_frame, font=("Arial", 12))
+        promo_e.pack(side="left", fill="x", expand=True, ipady=6)
+
+        promo_status = tk.Label(win, text="", bg=c("bg"), fg="red",
+                                font=("Arial", 10))
+        promo_status.pack(pady=(2, 0))
+
+        total_label = tk.Label(win, text=f"Сумма: {get_total()} ₽",
+                               font=("Arial", 14, "bold"),
+                               bg=c("bg"), fg=c("accent"))
+        total_label.pack(pady=10)
+
+        def apply_code():
+            ok, msg = apply_promo(promo_e.get())
+            promo_status.config(text=msg, fg=("green" if ok else "red"))
+            total_label.config(text=f"Сумма: {get_total()} ₽")
+
+        tk.Button(promo_frame, text="Применить", command=apply_code,
+                  bg=c("accent"), fg="white", bd=0, padx=12,
+                  cursor="hand2").pack(side="left", padx=6)
+
+        # ---------- ПОДТВЕРЖДЕНИЕ ----------
+        def confirm():
+            global active_promo
+            name = name_e.get().strip()
+            phone = phone_e.get().strip()
+            addr = addr_e.get().strip()
+            comm = comm_e.get().strip()
+
+            if not name or not phone or not addr:
+                messagebox.showerror("Ошибка", "Заполните имя, телефон и адрес")
+                return
+
+            order_num = random.randint(1000, 9999)
+            delivery_minutes = random.randint(30, 60)
+            delivery_time = datetime.now() + timedelta(minutes=delivery_minutes)
+            delivery_str = delivery_time.strftime("%H:%M")
+
+            sub = get_subtotal()
+            total = get_total()
+            discount_sum = sub - total
+
+            order = {
+                "number": order_num, "name": name, "phone": phone,
+                "address": addr, "comment": comm,
+                "items": cart.copy(), "total": total,
+                "promo": active_promo["code"] if active_promo else None,
+                "delivery_time": delivery_str,
+                "discount_sum": discount_sum,
+                "subtotal": sub
+            }
+            orders_history.append(order)
+
+            cart.clear()
+            active_promo = None
+            win.destroy()
+
+            # Окно подтверждения
+            self.show_order_confirmation(order)
+
+        tk.Button(win, text="Подтвердить заказ", command=confirm,
+                  bg=c("accent"), fg="white", font=("Arial", 13, "bold"),
+                  bd=0, padx=20, pady=12, cursor="hand2").pack(pady=20)
+
+    # ---------- ОКНО ПОДТВЕРЖДЕНИЯ ----------
+    def show_order_confirmation(self, order):
+        win = tk.Toplevel(self.root)
+        win.title("Заказ оформлен")
+        win.geometry("420x520")
+        win.configure(bg=c("bg"))
+
+        tk.Label(win, text="✅ Заказ оформлен!",
+                 font=emoji_font(24), bg=c("bg"), fg="green").pack(pady=15)
+
+        # Номер заказа
+        tk.Label(win, text=f"Номер заказа: №{order['number']}",
+                 font=("Arial", 14, "bold"), bg=c("bg"), fg=c("text")).pack(pady=5)
+
+        # Время доставки
+        tk.Label(win, text=f"🕒 Доставка примерно в {order['delivery_time']}",
+                 font=("Arial", 14), bg=c("bg"), fg=c("accent")).pack(pady=5)
+
+        # Разделитель
+        tk.Frame(win, bg=c("sub"), height=1).pack(fill="x", padx=30, pady=10)
+
+        # Данные получателя
+        tk.Label(win, text=f"👤 Имя: {order['name']}",
+                 font=("Arial", 12), bg=c("bg"), fg=c("text"), anchor="w").pack(fill="x", padx=30, pady=2)
+        tk.Label(win, text=f"📞 Телефон: {order['phone']}",
+                 font=("Arial", 12), bg=c("bg"), fg=c("text"), anchor="w").pack(fill="x", padx=30, pady=2)
+        tk.Label(win, text=f"🏠 Адрес: {order['address']}",
+                 font=("Arial", 12), bg=c("bg"), fg=c("text"), anchor="w",
+                 wraplength=360, justify="left").pack(fill="x", padx=30, pady=2)
+
+        if order["comment"]:
+            tk.Label(win, text=f"💬 Комментарий: {order['comment']}",
+                     font=("Arial", 12), bg=c("bg"), fg=c("sub"), anchor="w",
+                     wraplength=360, justify="left").pack(fill="x", padx=30, pady=2)
+
+        # Разделитель
+        tk.Frame(win, bg=c("sub"), height=1).pack(fill="x", padx=30, pady=10)
+
+        # Состав заказа
+        tk.Label(win, text="🧾 Состав заказа:",
+                 font=("Arial", 12, "bold"), bg=c("bg"), fg=c("text")).pack(anchor="w", padx=30, pady=(5, 0))
+
+        items_text = ""
+        for i in order["items"]:
+            items_text += f"{i['emoji']} {i['name']} × {i['qty']} = {i['price'] * i['qty']} ₽\n"
+
+        tk.Label(win, text=items_text, font=("Arial", 11),
+                 bg=c("bg"), fg=c("text"), justify="left").pack(anchor="w", padx=30)
+
+        # Разделитель
+        tk.Frame(win, bg=c("sub"), height=1).pack(fill="x", padx=30, pady=10)
+
+        # Сумма
+        tk.Label(win, text=f"Сумма без скидки: {order['subtotal']} ₽",
+                 font=("Arial", 11), bg=c("bg"), fg=c("sub")).pack(anchor="w", padx=30)
+
+        if order["promo"]:
+            tk.Label(win,
+                     text=f"🎟 Промокод {order['promo']}: −{order['discount_sum']} ₽",
+                     font=("Arial", 12), bg=c("bg"), fg="green").pack(anchor="w", padx=30)
+
+        tk.Label(win, text=f"💰 К оплате: {order['total']} ₽",
+                 font=("Arial", 18, "bold"), bg=c("bg"), fg=c("accent")).pack(pady=15)
+
+        tk.Button(win, text="Понятно", command=win.destroy,
+                  bg=c("accent"), fg="white", font=("Arial", 13, "bold"),
+                  bd=0, padx=30, pady=10, cursor="hand2").pack(pady=10)
+
+    # ---------- ТЕМА ----------
+    def toggle_theme(self):
+        global current_theme
+        current_theme = "light" if current_theme == "dark" else "dark"
+        self.root.configure(bg=c("bg"))
+        self.container.configure(bg=c("bg"))
+        self.show_menu()
+
+
+# ---------- ЗАПУСК ----------
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = FoodApp(root)
+    root.mainloop()
